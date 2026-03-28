@@ -110,6 +110,6 @@ notebooks/
 results/
 demo/
 generation/
-scripts/
+# scripts/
 exp/configs/
 utils/local/
