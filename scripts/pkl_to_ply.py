@@ -1,4 +1,10 @@
-"""将 PKL 数据转换为 ASCII PLY 点云（仅 XYZ）。
+"""批量将 PKL 数据转换为点云文件（XYZ/PLY）。
+
+输入目录结构示例：
+    input_root/A/pred_nerve_pwl_curve.pkl
+
+输出目录结构示例：
+    output_root/A.xyz
 
 参数直接在代码中配置，不依赖命令行参数。
 """
@@ -13,8 +19,15 @@ import numpy as np
 
 
 # ===== 在这里修改输入/输出路径参数 =====
-INPUT_PKL_PATH = Path(r"F:\skjWorkSpace\SourceCode\NerVE\demo\03\cad_pwl_curve.pkl")
-OUTPUT_PLY_PATH = Path(r"F:\skjWorkSpace\SourceCode\NerVE\demo\03\cad_pwl_curve.ply")
+INPUT_ROOT = Path(r"F:\skjWorkSpace\SourceCode\对比实验数据\NerVEdata")
+OUTPUT_ROOT = Path(r"F:\skjWorkSpace\SourceCode\对比实验数据\NerVEdata_xyzverted")
+
+# 输出格式："xyz" 或 "ply"
+# 按你的示例 outpath/A.xyz，默认使用 xyz
+OUTPUT_FORMAT = "xyz"
+
+# 在每个子目录下寻找该文件名
+INPUT_FILENAME = "pred_nerve_pwl_curve.pkl"
 
 
 def _as_xyz_array(candidate: Any) -> np.ndarray | None:
@@ -98,24 +111,82 @@ def write_ascii_ply(output_path: Path, points_xyz: np.ndarray) -> None:
         np.savetxt(f, points_xyz, fmt="%.6f %.6f %.6f")
 
 
-def convert_pkl_to_ascii_ply(input_path: Path, output_path: Path) -> int:
+def write_ascii_xyz(output_path: Path, points_xyz: np.ndarray) -> None:
+    """将点云写为 ASCII XYZ（仅 x y z 三列，无 header）。"""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="ascii", newline="\n") as f:
+        np.savetxt(f, points_xyz, fmt="%.6f %.6f %.6f")
+
+
+def convert_one(input_path: Path, output_path: Path, output_format: str) -> int:
     with input_path.open("rb") as f:
         obj = pickle.load(f)
 
     points_xyz = extract_points_from_pkl(obj)
-    write_ascii_ply(output_path, points_xyz)
+    fmt = output_format.lower().strip(".")
+    if fmt == "ply":
+        write_ascii_ply(output_path, points_xyz)
+    elif fmt == "xyz":
+        write_ascii_xyz(output_path, points_xyz)
+    else:
+        raise ValueError(f"不支持的输出格式: {output_format}，仅支持 xyz/ply")
+
     return len(points_xyz)
 
 
+def find_input_pkls(input_root: Path, filename: str) -> list[Path]:
+    """查找 input_root 下一级子目录中的指定 pkl 文件。"""
+    return sorted(input_root.glob(f"*/{filename}"))
+
+
 def main() -> None:
-    input_path = INPUT_PKL_PATH
-    output_path = OUTPUT_PLY_PATH
+    input_root = INPUT_ROOT
+    output_root = OUTPUT_ROOT
+    output_format = OUTPUT_FORMAT.lower().strip(".")
 
-    if not input_path.exists():
-        raise FileNotFoundError(f"输入 PKL 文件不存在: {input_path}")
+    if not input_root.exists():
+        raise FileNotFoundError(f"输入目录不存在: {input_root}")
 
-    count = convert_pkl_to_ascii_ply(input_path, output_path)
-    print(f"转换完成: {input_path} -> {output_path}，点数: {count}")
+    if output_format not in {"xyz", "ply"}:
+        raise ValueError(f"OUTPUT_FORMAT 仅支持 xyz/ply，当前: {OUTPUT_FORMAT}")
+
+    input_files = find_input_pkls(input_root, INPUT_FILENAME)
+    if not input_files:
+        raise FileNotFoundError(
+            f"未找到输入文件，期望结构为: {input_root}/<name>/{INPUT_FILENAME}"
+        )
+
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    total_points = 0
+    success = 0
+    failed: list[tuple[Path, Exception]] = []
+
+    for input_path in input_files:
+        # input_root/A/pred_nerve_pwl_curve.pkl -> output_root/A.xyz(or .ply)
+        sample_name = input_path.parent.name
+        output_path = output_root / f"{sample_name}.{output_format}"
+
+        try:
+            count = convert_one(input_path, output_path, output_format)
+            total_points += count
+            success += 1
+            print(f"[OK] {input_path} -> {output_path}，点数: {count}")
+        except Exception as e:  # noqa: BLE001
+            failed.append((input_path, e))
+            print(f"[FAILED] {input_path}，原因: {e}")
+
+    print("-" * 60)
+    print(
+        f"批处理完成: 成功 {success}/{len(input_files)}，"
+        f"失败 {len(failed)}，总点数 {total_points}"
+    )
+
+    if failed:
+        raise RuntimeError(
+            "以下文件转换失败:\n"
+            + "\n".join(f"- {path}: {err}" for path, err in failed)
+        )
 
 
 if __name__ == "__main__":

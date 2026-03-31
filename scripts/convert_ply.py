@@ -1,6 +1,10 @@
-"""将 PLY 点云转换为仅包含 XYZ 坐标的二进制 little-endian PLY。
+"""批量将输入目录中的 PLY 转换为仅包含 XYZ 的 binary_little_endian PLY。
 
 参数直接在代码里配置，不依赖命令行参数。
+
+输出结构：
+- 输入: A.ply
+- 输出: <OUTPUT_ROOT_DIR>/A/pc_obj.ply
 """
 
 from __future__ import annotations
@@ -12,8 +16,8 @@ import open3d as o3d
 
 
 # ===== 在这里修改输入/输出路径参数 =====
-INPUT_PLY_PATH = Path(r"F:\skjWorkSpace\SourceCode\CurveNetworkRecon\data\CADinput\00000003.ply")
-OUTPUT_PLY_PATH = Path(r"F:\skjWorkSpace\SourceCode\CurveNetworkRecon\data\CADinput\00000003xyz_binary.ply")
+INPUT_DIR = Path(r"F:\skjWorkSpace\SourceCode\NerVE\NerVE_data")
+OUTPUT_ROOT_DIR = Path(r"F:\skjWorkSpace\SourceCode\NerVE\NerVE_data_converted")
 
 
 def load_vertices(input_path: Path) -> np.ndarray:
@@ -57,14 +61,27 @@ def convert_ply_to_xyz_binary(input_path: Path, output_path: Path) -> int:
 
 
 def main() -> None:
-    input_path = INPUT_PLY_PATH
-    output_path = OUTPUT_PLY_PATH
+    if not INPUT_DIR.exists() or not INPUT_DIR.is_dir():
+        raise FileNotFoundError(f"输入目录不存在或不是目录: {INPUT_DIR}")
 
-    if not input_path.exists():
-        raise FileNotFoundError(f"输入文件不存在: {input_path}")
+    input_files = sorted(p for p in INPUT_DIR.iterdir() if p.is_file() and p.suffix.lower() == ".ply")
+    if not input_files:
+        raise FileNotFoundError(f"输入目录下未找到 .ply 文件: {INPUT_DIR}")
 
-    count = convert_ply_to_xyz_binary(input_path, output_path)
-    print(f"转换完成: {input_path} -> {output_path}，点数: {count}")
+    total_points = 0
+    success_count = 0
+
+    for input_path in input_files:
+        output_path = OUTPUT_ROOT_DIR / input_path.stem / "pc_obj.ply"
+        count = convert_ply_to_xyz_binary(input_path, output_path)
+        total_points += count
+        success_count += 1
+        print(f"转换完成: {input_path.name} -> {output_path}，点数: {count}")
+
+    print(
+        f"批处理完成，共转换 {success_count} 个文件，总点数: {total_points}。"
+        f"输出根目录: {OUTPUT_ROOT_DIR}"
+    )
 
 
 if __name__ == "__main__":

@@ -113,3 +113,5 @@ generation/
 # scripts/
 exp/configs/
 utils/local/
+NerVE_data/
+NerVE_data_xyz/
