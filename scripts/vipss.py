@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -30,14 +31,17 @@ def resolve_config_path(path_value: Path) -> Path:
 def run_one(vipss_exe: Path, input_file: Path, output_dir: Path) -> None:
     """执行单个文件的 vipss 命令。"""
     output_dir.mkdir(parents=True, exist_ok=True)
+    # vipss 在部分版本中会把 -o 当作“前缀字符串”拼接，
+    # 这里强制补一个路径分隔符，避免出现：NerVEdata_results00000003_normal.ply
+    output_arg = str(output_dir.resolve()) + os.sep
 
     cmd = [
         str(vipss_exe),
         "-i",
         str(input_file),
         "-o",
-        str(output_dir),
-        "-s",
+        output_arg,
+        "-s 100",
     ]
 
     subprocess.run(cmd, check=True)
