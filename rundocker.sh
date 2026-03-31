@@ -1,5 +1,5 @@
 docker run --gpus all -it --rm \
     -v $(pwd):/NerVE \
     -w /NerVE \
-    nerve_ready:v1 \
+    nerve:v2 \
     /bin/bash
