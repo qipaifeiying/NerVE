@@ -9,9 +9,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
+import tempfile
 
 import numpy as np
 import open3d as o3d
+
+# 避免 Open3D 在“探测式读取失败”时打印大量 WARNING，失败由异常信息统一输出
+o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Error)
 
 
 # ===== 在这里修改输入/输出路径参数 =====
@@ -21,16 +26,30 @@ OUTPUT_DIR = Path(r"F:\skjWorkSpace\SourceCode\对比实验数据\ECNet_result_x
 
 def load_vertices_xyz(ply_path: Path) -> np.ndarray:
     """读取 PLY（点云或网格）并返回 Nx3 的 float32 顶点坐标。"""
-    pcd = o3d.io.read_point_cloud(str(ply_path))
-    vertices = np.asarray(pcd.points)
+    if not ply_path.exists():
+        raise FileNotFoundError(f"文件不存在: {ply_path}")
 
-    # 某些 PLY 作为 mesh 才能正确读取
-    if vertices.size == 0:
-        mesh = o3d.io.read_triangle_mesh(str(ply_path))
-        vertices = np.asarray(mesh.vertices)
+    def _read_with_open3d(path: Path) -> np.ndarray:
+        pcd = o3d.io.read_point_cloud(str(path))
+        v = np.asarray(pcd.points)
+
+        # 某些 PLY 作为 mesh 才能正确读取
+        if v.size == 0:
+            mesh = o3d.io.read_triangle_mesh(str(path))
+            v = np.asarray(mesh.vertices)
+        return v
+
+    # 统一通过临时 ASCII 路径读取，规避 Windows 下路径编码/本地化导致的偶发读取告警
+    with tempfile.TemporaryDirectory(prefix="ply_tmp_") as tmpdir:
+        tmp_ply = Path(tmpdir) / "input.ply"
+        shutil.copyfile(ply_path, tmp_ply)
+        vertices = _read_with_open3d(tmp_ply)
 
     if vertices.ndim != 2 or vertices.shape[1] < 3:
         raise ValueError(f"顶点坐标维度不合法: {vertices.shape}, 文件: {ply_path}")
+
+    if len(vertices) == 0:
+        raise ValueError(f"读取到 0 个点: {ply_path}")
 
     return vertices[:, :3].astype(np.float32, copy=False)
 
@@ -64,14 +83,21 @@ def main() -> None:
 
     total_points = 0
     converted = 0
+    failed = 0
 
     for ply_path in ply_files:
-        out_path, point_count = convert_one_file(ply_path, out_dir)
-        total_points += point_count
-        converted += 1
-        print(f"转换完成: {ply_path.name} -> {out_path.name}，点数: {point_count}")
+        try:
+            out_path, point_count = convert_one_file(ply_path, out_dir)
+            total_points += point_count
+            converted += 1
+            print(f"转换完成: {ply_path.name} -> {out_path.name}，点数: {point_count}")
+        except Exception as exc:
+            failed += 1
+            print(f"转换失败: {ply_path.name}，原因: {exc}")
 
-    print(f"全部完成：{converted} 个文件，总点数: {total_points}，输出目录: {out_dir}")
+    print(
+        f"全部完成：成功 {converted} 个，失败 {failed} 个，总点数: {total_points}，输出目录: {out_dir}"
+    )
 
 
 if __name__ == "__main__":
